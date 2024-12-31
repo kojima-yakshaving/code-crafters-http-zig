@@ -14,5 +14,5 @@ pub fn main() !void {
     defer listener.deinit();
 
     _ = try listener.accept();
-    try stdout.print("client connected!", .{});
+    try stdout.print("HTTP/1.1 200 OK\r\n\r\n", .{});
 }
