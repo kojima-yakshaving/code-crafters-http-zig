@@ -13,6 +13,6 @@ pub fn main() !void {
     });
     defer listener.deinit();
 
-    _ = try listener.accept();
-    try stdout.print("HTTP/1.1 200 OK\r\n\r\n", .{});
+    const conn = try listener.accept();
+    try conn.stream.writeAll("HTTP/1.1 200 OK\r\n\r\n");
 }
