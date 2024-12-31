@@ -42,6 +42,33 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, path, "/index.html") or std.mem.eql(u8, path, "/")) {
         _ = try conn.stream.write("HTTP/1.1 200 OK\r\n\r\n");
+    } else if (std.mem.startsWith(u8, path, "/echo/")) {
+        const message = path[6..];
+        const length = message.len;
+
+        // Allocate enough space to hold the decimal representation of `length`
+        var length_str: [4]u8 = undefined;
+        _ = try std.fmt.bufPrint(&length_str, "{d}", .{length});
+
+        var bytes_written: u8 = 0;
+        for (length_str) |byte| {
+            if (byte <= '9' and byte >= '0') {
+                bytes_written += 1;
+            } else {
+                break;
+            }
+        }
+
+        // Write the length of the message
+        const length_slice = length_str[0..bytes_written];
+        std.debug.print("length: {s}\n", .{length_slice});
+
+        _ = try conn.stream.write("HTTP/1.1 200 OK\r\n");
+        _ = try conn.stream.write("Content-Type: text/plain\r\n");
+        _ = try conn.stream.write("Content-Length: ");
+        _ = try conn.stream.write(length_slice);
+        _ = try conn.stream.write("\r\n\r\n");
+        _ = try conn.stream.write(message);
     } else {
         _ = try conn.stream.write("HTTP/1.1 404 Not Found\r\n\r\n");
     }
