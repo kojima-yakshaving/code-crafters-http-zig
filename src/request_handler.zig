@@ -1,4 +1,42 @@
 const std = @import("std");
+const Status = std.http.Status;
+
+pub const Response = struct {
+    status: Status,
+    headers: ?[]const ResponseHeader,
+    body: []const u8,
+};
+
+pub const ResponseHeader = struct {
+    key: []const u8,
+    value: []const u8,
+};
+
+pub fn respond(conn: std.net.Server.Connection, response: Response) !void {
+    var buf: [1024]u8 = .{0} ** 1024;
+    const phrase = response.status.phrase().?;
+
+    // returns printed slice
+    const head = try std.fmt.bufPrint(&buf, "HTTP/1.1 {d} {s}\r\n", .{ @intFromEnum(response.status), phrase });
+    _ = try conn.stream.write(head);
+    const stdout = std.io.getStdOut().writer();
+    _ = try stdout.write(head);
+    if (response.headers) |headers| {
+        std.debug.print("Headers written\n", .{});
+        for (headers) |header| {
+            _ = try conn.stream.writeAll(header.key);
+            _ = try conn.stream.writeAll(": ");
+            _ = try conn.stream.writeAll(header.value);
+            _ = try conn.stream.write("\r\n");
+        }
+        std.debug.print("Headers written\n", .{});
+    }
+    _ = try conn.stream.writeAll("\r\n");
+    if (response.body.len == 0) {
+        return;
+    }
+    _ = try conn.stream.write(response.body);
+}
 
 pub fn handleRequest(conn: std.net.Server.Connection) !void {
     var buf: [1024]u8 = undefined;
@@ -21,32 +59,27 @@ pub fn handleRequest(conn: std.net.Server.Connection) !void {
     _ = it.next() orelse "missing protocol";
 
     if (std.mem.eql(u8, path, "/index.html") or std.mem.eql(u8, path, "/")) {
-        _ = try conn.stream.write("HTTP/1.1 200 OK\r\n\r\n");
+        try respond(conn, Response{
+            .status = Status.ok,
+            .headers = null,
+            .body = "",
+        });
     } else if (std.mem.startsWith(u8, path, "/echo/")) {
         const message = path[6..];
         const length = message.len;
 
-        var length_str: [4]u8 = undefined;
-        _ = try std.fmt.bufPrint(&length_str, "{d}", .{length});
+        const result = try std.fmt.bufPrint(&buf, "{d}", .{length});
 
-        var bytes_written: u8 = 0;
-        for (length_str) |byte| {
-            if (byte <= '9' and byte >= '0') {
-                bytes_written += 1;
-            } else {
-                break;
-            }
-        }
-
-        const length_slice = length_str[0..bytes_written];
-        std.debug.print("length: {s}\n", .{length_slice});
-        _ = try conn.stream.write("HTTP/1.1 200 OK\r\n");
-        _ = try conn.stream.write("Content-Type: text/plain\r\n");
-        _ = try conn.stream.write("Content-Length: ");
-        _ = try conn.stream.write(length_slice);
-        _ = try conn.stream.write("\r\n\r\n");
-        _ = try conn.stream.write(message);
+        const headers = [_]ResponseHeader{
+            .{ .key = "Content-Type", .value = "text/plain" },
+            .{ .key = "Content-Length", .value = result },
+        };
+        try respond(conn, Response{
+            .status = Status.ok,
+            .headers = headers[0..],
+            .body = message,
+        });
     } else {
-        _ = try conn.stream.write("HTTP/1.1 404 Not Found\r\n\r\n");
+        try respond(conn, Response{ .status = Status.not_found, .headers = null, .body = "" });
     }
 }
